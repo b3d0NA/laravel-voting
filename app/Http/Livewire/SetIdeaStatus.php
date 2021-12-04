@@ -1,0 +1,49 @@
+<?php
+
+namespace App\Http\Livewire;
+
+use App\Mail\IdeaStatusUpdatedMailable;
+use App\Models\Idea;
+use Illuminate\Support\Facades\Mail;
+use Livewire\Component;
+
+class SetIdeaStatus extends Component
+{
+
+    public $idea;
+    public $status;
+    public $notifyAllVoters;
+    
+    public function mount(Idea $idea){
+        $this->idea = $idea;
+        $this->status = $this->idea->status_id;
+    }
+
+    public function updateIdeaStatus(){
+        if(!auth()->check() || ! auth()->user()->isAdmin()){
+            abort(401); 
+        }
+        $this->idea->status_id = $this->status;
+        $this->idea->save(); 
+
+        $this->notifyAllVoters && $this->notifyAllVoters();
+
+        $this->emit("ideaStatusWasUpdated", "Idea status was updated!");
+    }
+
+    public function notifyAllVoters(){
+        $this->idea->votes()
+            ->select("name", "email")
+            ->chunk(100, function ($voters){
+                foreach($voters as $voter){
+                    Mail::to($voter->email)
+                        ->queue(new IdeaStatusUpdatedMailable($this->idea));
+                }
+            });
+    }
+
+    public function render()
+    {
+        return view('livewire.set-idea-status');
+    }
+}
